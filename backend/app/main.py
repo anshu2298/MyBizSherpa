@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.routers import transcript
+
 from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 
 app.add_middleware(
