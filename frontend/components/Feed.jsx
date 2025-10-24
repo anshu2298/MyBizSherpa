@@ -45,12 +45,10 @@ export default function Feed({ results }) {
             <div className='flex items-start justify-between'>
               <div>
                 <CardTitle className='text-xl'>
-                  {result.title}
+                  Transcript Feedback
                 </CardTitle>
                 <CardDescription className='mt-1'>
-                  {new Date(
-                    result.timestamp
-                  ).toLocaleString()}
+                  {result.date}
                 </CardDescription>
               </div>
               <Button
@@ -70,13 +68,13 @@ export default function Feed({ results }) {
             </div>
           </CardHeader>
           <CardContent className='space-y-4'>
-            {result.inputSummary && (
+            {result.transcript_text && (
               <div>
                 <h4 className='font-semibold text-sm text-gray-700 mb-2'>
                   Input Summary
                 </h4>
                 <p className='text-sm text-gray-600 bg-gray-50 p-4 rounded-lg'>
-                  {result.inputSummary}
+                  {result.transcript_text}
                 </p>
               </div>
             )}
@@ -85,7 +83,7 @@ export default function Feed({ results }) {
                 AI Insights
               </h4>
               <div className='text-sm text-gray-800 bg-blue-50 p-4 rounded-lg whitespace-pre-wrap'>
-                {result.output}
+                {result.ai_summary}
               </div>
             </div>
           </CardContent>

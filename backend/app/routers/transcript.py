@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.services.supabase_client import supabase
-
+from app.services.gorq_client import analyze_transcript_with_groq
 router = APIRouter()
 
 @router.post("/transcript")
@@ -15,23 +15,44 @@ async def analyze_transcript(payload: dict):
 
     attendees_str = ", ".join(attendees) if isinstance(attendees, list) else str(attendees)
 
+    # --- Call OpenAI to get the summary ---
+    try:
+        ai_summary = analyze_transcript_with_groq(transcript)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenAI analysis failed: {str(e)}")
+
+    # --- Prepare data to save in Supabase ---
     data = {
         "company_name": company,
         "attendees": attendees_str,
         "transcript_text": transcript,
-        "date": date or None
+        "date": date or None,
+        "ai_summary": ai_summary
     }
 
-    # --- NEW SYNTAX FOR SUPABASE v2 ---
+    # --- Insert into Supabase ---
     try:
         inserted = supabase.table("transcripts").insert(data).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Supabase insert failed: {str(e)}")
 
-    # Check inserted rows
     if not inserted or not inserted.data:
         raise HTTPException(status_code=500, detail="Failed to insert transcript")
 
     return {
-        "insights": f"Transcript stored in Supabase with ID {inserted.data[0]['id']}"
+        "insights": ai_summary,
+        "transcript_id": inserted.data[0]['id']
     }
+
+
+
+@router.get("/transcripts")
+async def get_all_transcripts():
+    try:
+        response = supabase.table("transcripts").select("*").execute()
+        # Check if data was returned
+        if response.data is None:
+            return {"transcripts": []}
+        return {"transcripts": response.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch transcripts: {str(e)}")
