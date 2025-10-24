@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import FormCard from "@/components/FormCard";
 import Feed from "@/components/Feed";
 import Loader from "@/components/Loader";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { postData } from "@/lib/api";
+import { postData, getData } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 export default function TranscriptPage() {
@@ -21,6 +21,27 @@ export default function TranscriptPage() {
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
   const { toast } = useToast();
+
+  console.log(results);
+
+  const fetchTranscripts = async () => {
+    try {
+      const response = await getData(
+        "http://127.0.0.1:8000/api/transcripts"
+      );
+      setResults(response.transcripts || []);
+    } catch (err) {
+      console.error("Failed to fetch transcripts:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load transcripts",
+        variant: "destructive",
+      });
+    }
+  };
+  useEffect(() => {
+    fetchTranscripts();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,20 +64,7 @@ export default function TranscriptPage() {
           date,
         }
       );
-
-      const newResult = {
-        id: Date.now(),
-        title: "Transcript Feedback",
-        timestamp: new Date().toISOString(),
-        inputSummary: transcript.substring(0, 150) + "...",
-        output:
-          response.insights ||
-          response.feedback ||
-          "Analysis completed successfully!",
-      };
-
-      setResults([newResult, ...results]);
-
+      fetchTranscripts();
       setTranscript("");
       setCompany("");
       setAttendees("");
