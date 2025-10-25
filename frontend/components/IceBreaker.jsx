@@ -1,4 +1,5 @@
 "use client";
+
 import {
   Card,
   CardContent,
@@ -20,18 +21,18 @@ export default function Feed({ results, onDelete }) {
     try {
       setDeletingId(id);
       await deleteData(
-        `http://127.0.0.1:8000/api/transcript/${id}`
+        `http://127.0.0.1:8000/api/icebreaker/${id}`
       );
       toast({
         title: "Deleted",
-        description: "Transcript deleted successfully",
+        description: "Ice breaker deleted successfully",
       });
       onDelete(id);
     } catch (err) {
-      console.error("Failed to delete transcript:", err);
+      console.error("Failed to delete Ice breaker:", err);
       toast({
         title: "Error",
-        description: "Failed to delete transcript",
+        description: "Failed to delete Ice breaker",
         variant: "destructive",
       });
     } finally {
@@ -39,9 +40,32 @@ export default function Feed({ results, onDelete }) {
     }
   };
 
+  function renderBoldHeadings(text) {
+    if (!text) return null;
+
+    // Split by '**' and map over the parts
+    const parts = text.split(/(\*\*.*?\*\*)/g); // capture **...** blocks
+    return parts.map((part, index) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong key={index}>
+            {part.slice(2, -2)} {/* remove the ** */}
+          </strong>
+        );
+      }
+      return part; // normal text
+    });
+  }
+
   function formatDate(dateString) {
     if (!dateString) return "";
-    const [year, month, day] = dateString.split("-");
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(
+      2,
+      "0"
+    );
+    const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   }
 
@@ -70,10 +94,10 @@ export default function Feed({ results, onDelete }) {
             <div className='flex items-start justify-between'>
               <div>
                 <CardTitle className='text-xl'>
-                  Transcript Feedback
+                  {`Icebreaker for ${result.company_name}`}
                 </CardTitle>
                 <CardDescription className='mt-1'>
-                  {formatDate(result.date)}
+                  {formatDate(result.date_generated)}
                 </CardDescription>
               </div>
               <Button
@@ -83,27 +107,17 @@ export default function Feed({ results, onDelete }) {
                 onClick={() => handleDelete(result.id)}
                 className='shrink-0 hover:text-red-500 transition-colors'
               >
-                <Delete className='h-4 w-4  ' />
+                <Delete className='h-4 w-4' />
               </Button>
             </div>
           </CardHeader>
           <CardContent className='space-y-4'>
-            {result.transcript_text && (
-              <div>
-                <h4 className='font-semibold text-sm text-gray-700 mb-2'>
-                  Input Summary
-                </h4>
-                <p className='text-sm text-gray-600 bg-gray-50 p-4 rounded-lg'>
-                  {result.transcript_text}
-                </p>
-              </div>
-            )}
             <div>
               <h4 className='font-semibold text-sm text-gray-700 mb-2'>
                 AI Insights
               </h4>
               <div className='text-sm text-gray-800 bg-blue-50 p-4 rounded-lg whitespace-pre-wrap'>
-                {result.ai_summary}
+                {renderBoldHeadings(result.icebreaker_text)}
               </div>
             </div>
           </CardContent>

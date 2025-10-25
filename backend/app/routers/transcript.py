@@ -56,3 +56,19 @@ async def get_all_transcripts():
         return {"transcripts": response.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch transcripts: {str(e)}")
+    
+    
+    
+    
+@router.delete("/transcript/{transcript_id}")
+def delete_transcript(transcript_id: str):
+    try:
+        response = supabase.table("transcripts").delete().eq("id", transcript_id).execute()
+
+        if len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+
+        return {"message": "Transcript deleted successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

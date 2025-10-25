@@ -22,8 +22,6 @@ export default function TranscriptPage() {
   const [results, setResults] = useState([]);
   const { toast } = useToast();
 
-  console.log(results);
-
   const fetchTranscripts = async () => {
     try {
       const response = await getData(
@@ -39,6 +37,7 @@ export default function TranscriptPage() {
       });
     }
   };
+
   useEffect(() => {
     fetchTranscripts();
   }, []);
@@ -51,11 +50,9 @@ export default function TranscriptPage() {
       setError("Please enter a transcript");
       return;
     }
-
     setIsLoading(true);
-
     try {
-      const response = await postData(
+      await postData(
         "http://127.0.0.1:8000/api/transcript",
         {
           transcript,
@@ -88,6 +85,12 @@ export default function TranscriptPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeleteLocal = (id) => {
+    setResults((prev) =>
+      prev.filter((item) => item.id !== id)
+    );
   };
 
   return (
@@ -189,9 +192,12 @@ export default function TranscriptPage() {
           </div>
         )}
 
-        {!isLoading && results.length > 0 && (
+        {!isLoading && (
           <div className='mt-10'>
-            <Feed results={results} />
+            <Feed
+              results={results}
+              onDelete={handleDeleteLocal}
+            />
           </div>
         )}
       </div>

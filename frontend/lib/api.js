@@ -30,3 +30,9 @@ export async function getData(url) {
   if (!res.ok) throw new Error("Failed to fetch data");
   return res.json();
 }
+
+export async function deleteData(url) {
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete data");
+  return res.json();
+}
