@@ -16,12 +16,12 @@ import { deleteData } from "../lib/api.js";
 export default function Feed({ results, onDelete }) {
   const { toast } = useToast();
   const [deletingId, setDeletingId] = useState(null);
-
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const handleDelete = async (id) => {
     try {
       setDeletingId(id);
       await deleteData(
-        `http://127.0.0.1:8000/api/icebreaker/${id}`
+        `${backendUrl}/api/icebreaker/${id}`
       );
       toast({
         title: "Deleted",

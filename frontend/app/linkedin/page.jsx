@@ -32,11 +32,11 @@ export default function LinkedInPage() {
       reader.readAsText(file);
     }
   };
-
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const fetchIcebreaker = async () => {
     try {
       const response = await getData(
-        "http://127.0.0.1:8000/api/all_icebreker"
+        `${backendUrl}/api/all_icebreker`
       );
 
       const icebreakers =
@@ -74,14 +74,11 @@ export default function LinkedInPage() {
     }
     setIsLoading(true);
     try {
-      await postData(
-        "http://127.0.0.1:8000/api/icebreaker",
-        {
-          company_name: companyName,
-          linkedin_bio: linkedinBio,
-          pitch_deck: pitchDeck,
-        }
-      );
+      await postData(`${backendUrl}/api/icebreaker`, {
+        company_name: companyName,
+        linkedin_bio: linkedinBio,
+        pitch_deck: pitchDeck,
+      });
       fetchIcebreaker();
       setLinkedinBio("");
       setPitchDeck("");

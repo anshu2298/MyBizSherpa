@@ -21,11 +21,11 @@ export default function TranscriptPage() {
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
   const { toast } = useToast();
-
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const fetchTranscripts = async () => {
     try {
       const response = await getData(
-        "http://127.0.0.1:8000/api/transcripts"
+        `${backendUrl}/api/transcripts`
       );
       const transcripts = response.transcripts || [];
       const sortedTranscripts = transcripts.sort((a, b) => {
@@ -58,15 +58,12 @@ export default function TranscriptPage() {
     }
     setIsLoading(true);
     try {
-      await postData(
-        "http://127.0.0.1:8000/api/transcript",
-        {
-          transcript_text: transcript,
-          company_name: company,
-          attendees,
-          date,
-        }
-      );
+      await postData(`${backendUrl}/api/transcript`, {
+        transcript_text: transcript,
+        company_name: company,
+        attendees,
+        date,
+      });
       fetchTranscripts();
       setTranscript("");
       setCompany("");
