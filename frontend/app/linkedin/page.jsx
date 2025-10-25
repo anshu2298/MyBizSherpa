@@ -85,7 +85,7 @@ export default function LinkedInPage() {
       fetchIcebreaker();
       setLinkedinBio("");
       setPitchDeck("");
-
+      setCompanyName("");
       toast({
         title: "Success!",
         description: "Icebreaker generated successfully",

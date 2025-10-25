@@ -1,17 +1,17 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional
+from datetime import datetime
+
 
 # Input model when user uploads a transcript
 class TranscriptIn(BaseModel):
     company_name: str
-    attendees: list[str]
+    attendees: str
     transcript_text: str
-    date: Optional[date] = None
+    date: date
 
 # Output model for processed insights
 class TranscriptOut(BaseModel):
-    summary: str
-    strengths: list[str]
-    improvements: list[str]
-    recommendations: list[str]
+    ai_summary: str
+    date_generated: datetime
+   
