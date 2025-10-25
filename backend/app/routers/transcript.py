@@ -1,19 +1,22 @@
 from fastapi import APIRouter, HTTPException
+from datetime import datetime
 from app.services.supabase_client import supabase
+from app.models.transcript_model import TranscriptIn, TranscriptOut
 from app.services.gorq_client import analyze_transcript_with_groq
 router = APIRouter()
 
-@router.post("/transcript")
-async def analyze_transcript(payload: dict):
-    transcript = payload.get("transcript")
-    company = payload.get("company") or "N/A"
-    attendees = payload.get("attendees") or []
-    date = payload.get("date") 
-
+@router.post("/transcript",response_model=TranscriptOut)
+async def analyze_transcript(payload: TranscriptIn):
+    transcript = payload.transcript_text
+    company = payload.company_name
+    attendees = payload.attendees
+    date = payload.date
+    
     if not transcript:
         raise HTTPException(status_code=400, detail="Transcript text is required")
 
-    attendees_str = ", ".join(attendees) if isinstance(attendees, list) else str(attendees)
+    # Generate today's date
+    today = datetime.now()
 
     # --- Call OpenAI to get the summary ---
     try:
@@ -24,10 +27,11 @@ async def analyze_transcript(payload: dict):
     # --- Prepare data to save in Supabase ---
     data = {
         "company_name": company,
-        "attendees": attendees_str,
+        "attendees": attendees,
         "transcript_text": transcript,
-        "date": date or None,
-        "ai_summary": ai_summary
+        "date": date.isoformat() if date else None,
+        "ai_summary": ai_summary,
+        "date_generated": today.isoformat()
     }
 
     # --- Insert into Supabase ---
@@ -40,9 +44,9 @@ async def analyze_transcript(payload: dict):
         raise HTTPException(status_code=500, detail="Failed to insert transcript")
 
     return {
-        "insights": ai_summary,
-        "transcript_id": inserted.data[0]['id']
-    }
+        "ai_summary": ai_summary,
+         "date_generated":today
+        }
 
 
 

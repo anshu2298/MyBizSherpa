@@ -27,7 +27,13 @@ export default function TranscriptPage() {
       const response = await getData(
         "http://127.0.0.1:8000/api/transcripts"
       );
-      setResults(response.transcripts || []);
+      const transcripts = response.transcripts || [];
+      const sortedTranscripts = transcripts.sort((a, b) => {
+        const dateA = new Date(a.date_generated);
+        const dateB = new Date(b.date_generated);
+        return dateB - dateA;
+      });
+      setResults(sortedTranscripts);
     } catch (err) {
       console.error("Failed to fetch transcripts:", err);
       toast({
@@ -55,8 +61,8 @@ export default function TranscriptPage() {
       await postData(
         "http://127.0.0.1:8000/api/transcript",
         {
-          transcript,
-          company,
+          transcript_text: transcript,
+          company_name: company,
           attendees,
           date,
         }

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from datetime import date
+from datetime import datetime
 from app.models.icebreaker_model import IcebreakerIn, IcebreakerOut
 from app.services.gorq_client import  generate_icebreaker  
 from app.services.supabase_client import supabase  
@@ -24,7 +24,7 @@ async def linkedin_icebreaker(payload: IcebreakerIn):
         raise HTTPException(status_code=400, detail="LinkedIn bio is required")
     
     # Generate today's date
-    today = date.today()
+    today = datetime.now()
     
     try:
         # Call AI service to generate icebreaker

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional
+from datetime import datetime
 
 # Input model when user submits LinkedIn bio + pitch
 class IcebreakerIn(BaseModel):
@@ -11,4 +11,4 @@ class IcebreakerIn(BaseModel):
 # Output model for AI-generated icebreaker
 class IcebreakerOut(BaseModel):
     icebreaker: str   
-    date_generated: date
+    date_generated: datetime
