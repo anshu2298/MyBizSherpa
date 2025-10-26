@@ -15,10 +15,6 @@ QSTASH_URL = os.getenv("QSTASH_URL")
 QSTASH_TOKEN = os.getenv("QSTASH_TOKEN")
 
 # TESTING ROUTE
-
-
-
-
 @router.post("/enqueue-dummy")
 async def enqueue_dummy():
     target_url = "https://mybiz-backend.onrender.com/api/dummy-worker"
@@ -59,7 +55,18 @@ async def enqueue_dummy():
         "headers": dict(res.headers)
     }
 
-
+@router.post("/dummy-worker")
+async def dummy_worker(request: Request):
+    print("=" * 60)
+    print("🎯 WORKER ENDPOINT CALLED BY QSTASH!")
+    print(f"⏰ Time: {datetime.now().isoformat()}")
+    
+    data = await request.json()
+    print(f"📦 Received data: {data}")
+    print("✅ Processing completed successfully!")
+    print("=" * 60)
+    
+    return {"received": data, "message": "Dummy worker executed successfully"}
 
 # ✅ 1️⃣ QUEUE ENDPOINT - lightweight and fast
 @router.post("/transcript", response_model=dict)
