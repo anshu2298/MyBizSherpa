@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import FormCard from "@/components/FormCard";
 import IceBreaker from "@/components/IceBreaker";
 import Loader from "@/components/Loader";
@@ -8,11 +8,11 @@ import ErrorMessage from "@/components/ErrorMessage";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { postData } from "@/lib/api";
+import { postData, getData } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { getData } from "../../lib/api";
+
 export default function LinkedInPage() {
   const [companyName, setCompanyName] = useState("");
   const [linkedinBio, setLinkedinBio] = useState("");
@@ -20,7 +20,12 @@ export default function LinkedInPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]); // NEW: Track pending items
   const { toast } = useToast();
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const pollIntervalRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 20; // 20 retries * 3 seconds = 60 seconds max
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
@@ -32,61 +37,190 @@ export default function LinkedInPage() {
       reader.readAsText(file);
     }
   };
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+
   const fetchIcebreaker = async () => {
     try {
       const response = await getData(
         `${backendUrl}/api/all_icebreker`
       );
-
       const icebreakers =
         response.linkedin_icebreakers || [];
-
       const sortedIcebreakers = icebreakers.sort((a, b) => {
         const dateA = new Date(a.date_generated);
         const dateB = new Date(b.date_generated);
         return dateB - dateA;
       });
-
       setResults(sortedIcebreakers);
+      return sortedIcebreakers;
     } catch (err) {
       console.error("Failed to fetch icebreaker:", err);
-      toast({
-        title: "Error",
-        description: "Failed to load icebreakers",
-        variant: "destructive",
-      });
+      return [];
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchIcebreaker();
   }, []);
 
+  // Polling effect - starts when there are pending items
+  useEffect(() => {
+    if (pendingItems.length === 0) {
+      // No pending items, stop polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      retryCountRef.current = 0;
+      return;
+    }
+
+    // Start polling
+    console.log(
+      `🔄 Starting to poll for ${pendingItems.length} pending icebreakers`
+    );
+
+    pollIntervalRef.current = setInterval(async () => {
+      retryCountRef.current++;
+      console.log(
+        `📡 Polling attempt ${retryCountRef.current}/${MAX_RETRIES}`
+      );
+
+      const latestResults = await fetchIcebreaker();
+
+      // Check if any pending items are now complete
+      setPendingItems((prevPending) => {
+        const stillPending = prevPending.filter(
+          (pendingItem) => {
+            // Try to find this item in the latest results
+            const found = latestResults.find(
+              (result) =>
+                result.company_name ===
+                  pendingItem.company_name &&
+                result.linkedin_bio ===
+                  pendingItem.linkedin_bio
+            );
+
+            if (found) {
+              console.log(
+                `✅ Found completed icebreaker: ${pendingItem.company_name}`
+              );
+              toast({
+                title: "Success!",
+                description: `Icebreaker for ${
+                  pendingItem.company_name ||
+                  "your prospect"
+                } generated successfully`,
+              });
+              return false; // Remove from pending
+            }
+
+            // Check timeout
+            const elapsedTime =
+              Date.now() - pendingItem.timestamp;
+            const timeoutMs = 60000; // 60 seconds
+
+            if (elapsedTime > timeoutMs) {
+              console.log(
+                `⏱️ Timeout for icebreaker: ${pendingItem.company_name}`
+              );
+              toast({
+                title: "Timeout",
+                description:
+                  "Generation is taking longer than expected. Please refresh the page.",
+                variant: "destructive",
+              });
+              return false; // Remove from pending
+            }
+
+            return true; // Still pending
+          }
+        );
+
+        return stillPending;
+      });
+
+      // Stop polling if max retries reached
+      if (retryCountRef.current >= MAX_RETRIES) {
+        console.log(
+          "⚠️ Max retries reached, stopping poll"
+        );
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+
+        setPendingItems((prev) => {
+          if (prev.length > 0) {
+            toast({
+              title: "Processing",
+              description:
+                "Your icebreaker is still being generated. Refresh the page to see results.",
+              variant: "default",
+            });
+          }
+          return [];
+        });
+      }
+    }, 3000); // Poll every 3 seconds
+
+    // Cleanup on unmount
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [pendingItems.length]); // Re-run when pending items count changes
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
     if (!linkedinBio.trim()) {
       setError(
         "Please enter a LinkedIn bio or about section"
       );
       return;
     }
+
     setIsLoading(true);
+
     try {
-      await postData(`${backendUrl}/api/icebreaker`, {
-        company_name: companyName,
-        linkedin_bio: linkedinBio,
-        pitch_deck: pitchDeck,
-      });
-      fetchIcebreaker();
-      setLinkedinBio("");
-      setPitchDeck("");
-      setCompanyName("");
-      toast({
-        title: "Success!",
-        description: "Icebreaker generated successfully",
-      });
+      // Call the enqueue endpoint
+      const response = await postData(
+        `${backendUrl}/api/icebreaker`,
+        {
+          company_name: companyName,
+          linkedin_bio: linkedinBio,
+          pitch_deck: pitchDeck,
+        }
+      );
+
+      // Check if queued successfully
+      if (response.queued && response.status_code === 201) {
+        // Add to pending items immediately
+        const pendingItem = {
+          id: `pending-${Date.now()}`,
+          company_name: companyName,
+          linkedin_bio: linkedinBio,
+          pitch_deck: pitchDeck,
+          timestamp: Date.now(),
+          status: "processing",
+        };
+
+        setPendingItems((prev) => [pendingItem, ...prev]);
+
+        // Clear form
+        setLinkedinBio("");
+        setPitchDeck("");
+        setCompanyName("");
+
+        toast({
+          title: "Processing",
+          description:
+            "Your icebreaker is being generated. Results will appear shortly.",
+        });
+      } else {
+        throw new Error("Failed to queue icebreaker");
+      }
     } catch (err) {
       setError(
         err.message ||
@@ -107,6 +241,16 @@ export default function LinkedInPage() {
     setResults((prev) =>
       prev.filter((item) => item.id !== id)
     );
+  };
+
+  const handleCancelPending = (id) => {
+    setPendingItems((prev) =>
+      prev.filter((item) => item.id !== id)
+    );
+    toast({
+      title: "Cancelled",
+      description: "Removed pending item from view",
+    });
   };
 
   return (
@@ -133,7 +277,7 @@ export default function LinkedInPage() {
             className='flex flex-col gap-6'
           >
             <div>
-              <Label htmlFor='linkedinBio'>
+              <Label htmlFor='companyName'>
                 Company Name
               </Label>
               <Input
@@ -203,26 +347,21 @@ export default function LinkedInPage() {
               className='w-full py-6 text-lg'
             >
               {isLoading
-                ? "Generating..."
+                ? "Submitting..."
                 : "Generate Icebreaker"}
             </Button>
           </form>
         </FormCard>
 
-        {isLoading && (
-          <div className='mt-10'>
-            <Loader />
-          </div>
-        )}
-
-        {!isLoading && (
-          <div className='mt-10'>
-            <IceBreaker
-              results={results}
-              onDelete={handleDeleteLocal}
-            />
-          </div>
-        )}
+        {/* Show pending items and results */}
+        <div className='mt-10'>
+          <IceBreaker
+            results={results}
+            pendingItems={pendingItems}
+            onDelete={handleDeleteLocal}
+            onCancelPending={handleCancelPending}
+          />
+        </div>
       </div>
     </div>
   );

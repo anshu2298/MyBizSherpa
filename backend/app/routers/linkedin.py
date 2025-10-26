@@ -46,7 +46,7 @@ async def enqueue_icebreaker(payload: IcebreakerIn):
     headers = {
         "Authorization": f"Bearer {QSTASH_TOKEN}",
         "Content-Type": "application/json",
-        "Upstash-Delay": "3s"  # Remove this for immediate execution
+        "Upstash-Delay": "3s"  
     }
 
     async with httpx.AsyncClient(follow_redirects=False) as client:

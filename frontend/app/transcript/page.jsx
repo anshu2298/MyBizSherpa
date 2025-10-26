@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import FormCard from "@/components/FormCard";
 import Feed from "@/components/Feed";
 import Loader from "@/components/Loader";
@@ -20,8 +20,13 @@ export default function TranscriptPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]); // NEW: Track pending items
   const { toast } = useToast();
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const pollIntervalRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 20; // 20 retries * 3 seconds = 60 seconds max
+
   const fetchTranscripts = async () => {
     try {
       const response = await getData(
@@ -34,19 +39,123 @@ export default function TranscriptPage() {
         return dateB - dateA;
       });
       setResults(sortedTranscripts);
+      return sortedTranscripts;
     } catch (err) {
       console.error("Failed to fetch transcripts:", err);
-      toast({
-        title: "Error",
-        description: "Failed to load transcripts",
-        variant: "destructive",
-      });
+      return [];
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchTranscripts();
   }, []);
+
+  // Polling effect - starts when there are pending items
+  useEffect(() => {
+    if (pendingItems.length === 0) {
+      // No pending items, stop polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      retryCountRef.current = 0;
+      return;
+    }
+
+    // Start polling
+    console.log(
+      `🔄 Starting to poll for ${pendingItems.length} pending items`
+    );
+
+    pollIntervalRef.current = setInterval(async () => {
+      retryCountRef.current++;
+      console.log(
+        `📡 Polling attempt ${retryCountRef.current}/${MAX_RETRIES}`
+      );
+
+      const latestResults = await fetchTranscripts();
+
+      // Check if any pending items are now complete
+      setPendingItems((prevPending) => {
+        const stillPending = prevPending.filter(
+          (pendingItem) => {
+            // Try to find this item in the latest results
+            const found = latestResults.find(
+              (result) =>
+                result.company_name ===
+                  pendingItem.company_name &&
+                result.transcript_text ===
+                  pendingItem.transcript_text
+            );
+
+            if (found) {
+              console.log(
+                `✅ Found completed item: ${pendingItem.company_name}`
+              );
+              toast({
+                title: "Success!",
+                description: `Transcript for ${
+                  pendingItem.company_name || "your meeting"
+                } analyzed successfully`,
+              });
+              return false; // Remove from pending
+            }
+
+            // Check timeout
+            const elapsedTime =
+              Date.now() - pendingItem.timestamp;
+            const timeoutMs = 60000; // 60 seconds
+
+            if (elapsedTime > timeoutMs) {
+              console.log(
+                `⏱️ Timeout for item: ${pendingItem.company_name}`
+              );
+              toast({
+                title: "Timeout",
+                description:
+                  "Analysis is taking longer than expected. Please refresh the page.",
+                variant: "destructive",
+              });
+              return false; // Remove from pending
+            }
+
+            return true; // Still pending
+          }
+        );
+
+        return stillPending;
+      });
+
+      // Stop polling if max retries reached
+      if (retryCountRef.current >= MAX_RETRIES) {
+        console.log(
+          "⚠️ Max retries reached, stopping poll"
+        );
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+
+        setPendingItems((prev) => {
+          if (prev.length > 0) {
+            toast({
+              title: "Processing",
+              description:
+                "Your transcript is still being processed. Refresh the page to see results.",
+              variant: "default",
+            });
+          }
+          return [];
+        });
+      }
+    }, 3000); // Poll every 3 seconds
+
+    // Cleanup on unmount
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [pendingItems.length]); // Re-run when pending items count changes
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,24 +165,50 @@ export default function TranscriptPage() {
       setError("Please enter a transcript");
       return;
     }
-    setIsLoading(true);
-    try {
-      await postData(`${backendUrl}/api/transcript`, {
-        transcript_text: transcript,
-        company_name: company,
-        attendees,
-        date,
-      });
-      fetchTranscripts();
-      setTranscript("");
-      setCompany("");
-      setAttendees("");
-      setDate("");
 
-      toast({
-        title: "Success!",
-        description: "Transcript analyzed successfully",
-      });
+    setIsLoading(true);
+
+    try {
+      // Call the enqueue endpoint
+      const response = await postData(
+        `${backendUrl}/api/transcript`,
+        {
+          transcript_text: transcript,
+          company_name: company,
+          attendees,
+          date,
+        }
+      );
+
+      // Check if queued successfully
+      if (response.queued && response.status_code === 201) {
+        // Add to pending items immediately
+        const pendingItem = {
+          id: `pending-${Date.now()}`,
+          company_name: company,
+          transcript_text: transcript,
+          attendees,
+          date,
+          timestamp: Date.now(),
+          status: "processing",
+        };
+
+        setPendingItems((prev) => [pendingItem, ...prev]);
+
+        // Clear form
+        setTranscript("");
+        setCompany("");
+        setAttendees("");
+        setDate("");
+
+        toast({
+          title: "Processing",
+          description:
+            "Your transcript is being analyzed. Results will appear shortly.",
+        });
+      } else {
+        throw new Error("Failed to queue transcript");
+      }
     } catch (err) {
       setError(
         err.message ||
@@ -94,6 +229,16 @@ export default function TranscriptPage() {
     setResults((prev) =>
       prev.filter((item) => item.id !== id)
     );
+  };
+
+  const handleCancelPending = (id) => {
+    setPendingItems((prev) =>
+      prev.filter((item) => item.id !== id)
+    );
+    toast({
+      title: "Cancelled",
+      description: "Removed pending item from view",
+    });
   };
 
   return (
@@ -183,26 +328,21 @@ export default function TranscriptPage() {
               className='w-full py-6 text-lg'
             >
               {isLoading
-                ? "Analyzing..."
+                ? "Submitting..."
                 : "Analyze Transcript"}
             </Button>
           </form>
         </FormCard>
 
-        {isLoading && (
-          <div className='mt-10'>
-            <Loader />
-          </div>
-        )}
-
-        {!isLoading && (
-          <div className='mt-10'>
-            <Feed
-              results={results}
-              onDelete={handleDeleteLocal}
-            />
-          </div>
-        )}
+        {/* Show pending items and results */}
+        <div className='mt-10'>
+          <Feed
+            results={results}
+            pendingItems={pendingItems}
+            onDelete={handleDeleteLocal}
+            onCancelPending={handleCancelPending}
+          />
+        </div>
       </div>
     </div>
   );
