@@ -16,24 +16,25 @@ QSTASH_TOKEN = os.getenv("QSTASH_TOKEN")
 
 # TESTING ROUTE
 
+
+
+
 @router.post("/enqueue-dummy")
 async def enqueue_dummy():
     target_url = "https://mybiz-backend.onrender.com/api/dummy-worker"
+    payload = {"foo": "bar"}
 
-    payload = {"foo": "bar"}  # simple JSON payload
-
+    # ✅ Correct QStash format: append target URL to the publish endpoint
+    qstash_publish_url = f"{QSTASH_URL}/{target_url}"
+    
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            QSTASH_URL,
-            json={
-                "url": target_url,
-                "method": "POST",
-                "body": payload,
-                "delay": "3s"
-            },
+            qstash_publish_url,  # https://qstash.upstash.io/v2/publish/https://your-url.com
+            json=payload,  # The actual payload to send to your endpoint
             headers={
                 "Authorization": f"Bearer {QSTASH_TOKEN}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Upstash-Delay": "3s"  # Optional: delay in seconds
             }
         )
 
@@ -43,6 +44,7 @@ async def enqueue_dummy():
         "qstash_response_text": res.text,
         "status_code": res.status_code
     }
+
 
 
 @router.post("/dummy-worker")
