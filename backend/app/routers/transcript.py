@@ -1,5 +1,6 @@
 import os
 import httpx
+import json
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime
@@ -31,14 +32,14 @@ async def enqueue_transcript(payload: TranscriptIn):
 
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            QSTASH_URL,
-            json={
-                "url": target_url,
-                "body": data,
-                "headers": {"Authorization": f"Bearer {QSTASH_TOKEN}"},
-                "delay": "3s"
-            }
-        )
+        QSTASH_URL,
+        headers={"Authorization": f"Bearer {QSTASH_TOKEN}"},
+        json={
+            "url": "https://mybiz-backend.onrender.com/api/process-transcript",
+            "body": json.dumps(data),  # <- important: convert to string
+            "delay": "3s"
+        }
+    )
 
     return {
     "queued": True,
