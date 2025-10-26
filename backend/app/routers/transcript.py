@@ -41,7 +41,7 @@ async def enqueue_transcript(payload: TranscriptIn):
     headers = {
         "Authorization": f"Bearer {QSTASH_TOKEN}",
         "Content-Type": "application/json",
-        "Upstash-Delay": "3s"  # Optional delay
+        "Upstash-Delay": "3s" 
     }
 
     async with httpx.AsyncClient(follow_redirects=False) as client:
