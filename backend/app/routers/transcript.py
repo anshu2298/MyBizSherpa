@@ -11,41 +11,92 @@ from app.services.gorq_client import analyze_transcript_with_groq
 load_dotenv()
 router = APIRouter()
 
-QSTASH_URL = os.getenv("QSTASH_URL", "https://qstash.upstash.io/v2/publish")
+QSTASH_URL = os.getenv("QSTASH_URL")
 QSTASH_TOKEN = os.getenv("QSTASH_TOKEN")
+
+# TESTING ROUTE
+
+@router.post("/enqueue-dummy")
+async def enqueue_dummy():
+    target_url = "https://mybiz-backend.onrender.com/api/dummy-worker"
+
+    payload = {"foo": "bar"}  # simple JSON payload
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            QSTASH_URL,
+            json={
+                "url": target_url,
+                "method": "POST",
+                "body": payload,
+                "delay": "3s"
+            },
+            headers={
+                "Authorization": f"Bearer {QSTASH_TOKEN}",
+                "Content-Type": "application/json"
+            }
+        )
+
+    print("QStash response:", res.status_code, res.text)
+    return {
+        "queued": True,
+        "qstash_response_text": res.text,
+        "status_code": res.status_code
+    }
+
+
+@router.post("/dummy-worker")
+async def dummy_worker(request: Request):
+    data = await request.json()
+    print("Worker received:", data)
+    return {"received": data, "message": "Dummy worker executed successfully"}
+
+
 
 # ✅ 1️⃣ QUEUE ENDPOINT - lightweight and fast
 @router.post("/transcript", response_model=dict)
 async def enqueue_transcript(payload: TranscriptIn):
-    """Receives transcript data and queues background processing via QStash."""
+    """Receives transcript data and queues background processing via QStash."""    
     data = payload.dict()
 
+    # transcript is required
     if not data.get("transcript_text"):
         raise HTTPException(status_code=400, detail="Transcript text is required")
     
-        # Convert date to string for JSON serialization
+    # Convert date to string if present
     if data.get("date"):
         data["date"] = data["date"].isoformat()
 
     # deployed backend worker endpoint
     target_url = "https://mybiz-backend.onrender.com/api/process-transcript"
 
+    # QStash payload
+    qstash_payload = {
+        "url": target_url,          # MUST start with https://
+        "method": "POST",
+        "body": data,
+        "headers": {},
+        "delay": "3s"               # optional delay
+    }
+
+    headers = {
+        "Authorization": f"Bearer {QSTASH_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
     async with httpx.AsyncClient() as client:
-        res = await client.post(
-        QSTASH_URL,
-        headers={"Authorization": f"Bearer {QSTASH_TOKEN}"},
-        json={
-            "url": "https://mybiz-backend.onrender.com/api/process-transcript",
-            "body": json.dumps(data),  # <- important: convert to string
-            "delay": "3s"
-        }
-    )   
+        res = await client.post(QSTASH_URL, json=qstash_payload, headers=headers)
+
+        # debug logging
+        print(f"URL going to QStash: '{target_url}'")
+        print(f"QSTASH_URL: '{QSTASH_URL}'")
 
     return {
-    "queued": True,
-    "qstash_response_text": res.text,   # use .text instead of .json()
-    "status_code": res.status_code
-}
+        "queued": True,
+        "qstash_response_text": res.text,
+        "status_code": res.status_code
+    }
+
 
 
 # ✅ 2️⃣ WORKER ENDPOINT - called by QStash asynchronously
