@@ -12,6 +12,9 @@ router = APIRouter()
 QSTASH_URL = os.getenv("QSTASH_URL")
 QSTASH_TOKEN = os.getenv("QSTASH_TOKEN")
 
+if not QSTASH_URL or not QSTASH_TOKEN:
+    raise ValueError("QSTASH_URL and QSTASH_TOKEN must be set in environment variables")
+
 @router.get("/all_icebreker")
 async def get_all_icebreaker():
     try:
@@ -50,23 +53,34 @@ async def enqueue_icebreaker(payload: IcebreakerIn):
     }
 
     async with httpx.AsyncClient(follow_redirects=False) as client:
-        res = await client.post(qstash_publish_url, json=data, headers=headers)
-        
-        print(f"✅ QStash Response: {res.status_code}")
-        print(f"📝 Response Text: {res.text}")
-        
-        if res.status_code != 201:
-            print(f"⚠️ WARNING: Expected 201, got {res.status_code}")
-            print(f"📋 Response Headers: {dict(res.headers)}")
-        
-        print("⏳ Worker will generate icebreaker in 1 minute...")
-        print("=" * 60)
+        try:
+            res = await client.post(qstash_publish_url, json=data, headers=headers)
+            
+            print(f"✅ QStash Response: {res.status_code}")
+            print(f"📝 Response Text: {res.text}")
+            
+            if res.status_code != 201:
+                print(f"⚠️ WARNING: Expected 201, got {res.status_code}")
+                print(f"📋 Response Headers: {dict(res.headers)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to queue job in QStash. Status: {res.status_code}, Response: {res.text}"
+                )
+            
+            print("⏳ Worker will generate icebreaker in 1 minute...")
+            print("=" * 60)
 
-    return {
-        "queued": True,
-        "qstash_response_text": res.text,
-        "status_code": res.status_code
-    }
+            return {
+                "queued": True,
+                "qstash_response_text": res.text,
+                "status_code": res.status_code
+            }
+        except httpx.RequestError as e:
+            print(f"❌ QStash request failed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to connect to QStash: {str(e)}"
+            )
 
 
 # 2️⃣ WORKER ENDPOINT - called by QStash asynchronously

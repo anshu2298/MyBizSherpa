@@ -24,7 +24,11 @@ export default function LinkedInPage() {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const pollIntervalRef = useRef(null);
   const retryCountRef = useRef(0);
-  const MAX_RETRIES = 60; // 60 retries × 2s = 120s total (60s delay + 60s processing)
+  const QUEUE_DELAY_SECONDS = 60; // 1 minute queue delay
+  const PROCESSING_TIME_SECONDS = 60; // Estimated processing time
+  const TOTAL_TIMEOUT_SECONDS =
+    QUEUE_DELAY_SECONDS + PROCESSING_TIME_SECONDS + 30; // Add 30s buffer
+  const MAX_RETRIES = Math.ceil(TOTAL_TIMEOUT_SECONDS / 2); // Poll every 2 seconds
   const lastResultsCountRef = useRef(0);
 
   const handleFileUpload = (e) => {
@@ -86,9 +90,10 @@ export default function LinkedInPage() {
             (currentTime - item.timestamp) / 1000
           );
 
+          // Update status based on actual queue delay (1 minute)
           if (
             item.status === "queued" &&
-            elapsedSeconds >= 3
+            elapsedSeconds >= QUEUE_DELAY_SECONDS
           ) {
             console.log(
               `📤 ${item.company_name}: Queued → Processing`
@@ -117,12 +122,18 @@ export default function LinkedInPage() {
       setPendingItems((prevPending) => {
         const stillPending = prevPending.filter(
           (pendingItem) => {
+            // Match by company_name, linkedin_bio, and timestamp to avoid false matches
             const found = latestResults.find(
               (result) =>
                 result.company_name ===
                   pendingItem.company_name &&
                 result.linkedin_bio ===
-                  pendingItem.linkedin_bio
+                  pendingItem.linkedin_bio &&
+                Math.abs(
+                  new Date(
+                    result.date_generated
+                  ).getTime() - pendingItem.timestamp
+                ) < 300000 // Within 5 minutes of submission time
             );
 
             if (found) {
@@ -141,7 +152,8 @@ export default function LinkedInPage() {
 
             const elapsedTime =
               Date.now() - pendingItem.timestamp;
-            if (elapsedTime > 90000) {
+            const timeoutMs = TOTAL_TIMEOUT_SECONDS * 1000;
+            if (elapsedTime > timeoutMs) {
               console.log(
                 `⏱️ Timeout: ${pendingItem.company_name}`
               );
