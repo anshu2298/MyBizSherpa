@@ -41,7 +41,7 @@ async def enqueue_transcript(payload: TranscriptIn):
     headers = {
         "Authorization": f"Bearer {QSTASH_TOKEN}",
         "Content-Type": "application/json",
-        "Upstash-Delay": "3s" 
+        "Upstash-Delay": "1m" 
     }
 
     async with httpx.AsyncClient(follow_redirects=False) as client:
@@ -54,7 +54,7 @@ async def enqueue_transcript(payload: TranscriptIn):
             print(f"⚠️ WARNING: Expected 201, got {res.status_code}")
             print(f"📋 Response Headers: {dict(res.headers)}")
         
-        print("⏳ Worker will process transcript in 3 seconds...")
+        print("⏳ Worker will process transcript in 1 minute...")
         print("=" * 60)
 
     return {

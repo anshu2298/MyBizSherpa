@@ -46,7 +46,7 @@ async def enqueue_icebreaker(payload: IcebreakerIn):
     headers = {
         "Authorization": f"Bearer {QSTASH_TOKEN}",
         "Content-Type": "application/json",
-        "Upstash-Delay": "3s"  
+        "Upstash-Delay": "1m"  
     }
 
     async with httpx.AsyncClient(follow_redirects=False) as client:
@@ -59,7 +59,7 @@ async def enqueue_icebreaker(payload: IcebreakerIn):
             print(f"⚠️ WARNING: Expected 201, got {res.status_code}")
             print(f"📋 Response Headers: {dict(res.headers)}")
         
-        print("⏳ Worker will generate icebreaker in 3 seconds...")
+        print("⏳ Worker will generate icebreaker in 1 minute...")
         print("=" * 60)
 
     return {

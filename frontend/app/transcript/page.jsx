@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from "react";
 import FormCard from "@/components/FormCard";
 import Feed from "@/components/Feed";
-import Loader from "@/components/Loader";
 import ErrorMessage from "@/components/ErrorMessage";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,12 +19,13 @@ export default function TranscriptPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
-  const [pendingItems, setPendingItems] = useState([]); // NEW: Track pending items
+  const [pendingItems, setPendingItems] = useState([]);
   const { toast } = useToast();
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const pollIntervalRef = useRef(null);
   const retryCountRef = useRef(0);
-  const MAX_RETRIES = 20; // 20 retries * 3 seconds = 60 seconds max
+  const MAX_RETRIES = 60; // 60 retries × 2s = 120s total (60s delay + 60s processing)
+  const lastResultsCountRef = useRef(0); // Track when new results arrive
 
   const fetchTranscripts = async () => {
     try {
@@ -51,10 +51,9 @@ export default function TranscriptPage() {
     fetchTranscripts();
   }, []);
 
-  // Polling effect - starts when there are pending items
+  // Polling effect with status updates
   useEffect(() => {
     if (pendingItems.length === 0) {
-      // No pending items, stop polling
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -63,20 +62,52 @@ export default function TranscriptPage() {
       return;
     }
 
-    // Start polling
     console.log(
-      `🔄 Starting to poll for ${pendingItems.length} pending items`
+      `🔄 Polling for ${pendingItems.length} items`
     );
 
     pollIntervalRef.current = setInterval(async () => {
       retryCountRef.current++;
-      console.log(
-        `📡 Polling attempt ${retryCountRef.current}/${MAX_RETRIES}`
-      );
+      const currentTime = Date.now();
 
+      // Update status based on time elapsed
+      setPendingItems((prevPending) => {
+        return prevPending.map((item) => {
+          const elapsedSeconds = Math.floor(
+            (currentTime - item.timestamp) / 1000
+          );
+
+          // Status progression based on time
+          if (
+            item.status === "queued" &&
+            elapsedSeconds >= 3
+          ) {
+            console.log(
+              `📤 ${item.company_name}: Queued → Processing`
+            );
+            return { ...item, status: "processing" };
+          }
+
+          return item;
+        });
+      });
+
+      // Check for completed items
       const latestResults = await fetchTranscripts();
 
-      // Check if any pending items are now complete
+      // Detect new results
+      if (
+        latestResults.length > lastResultsCountRef.current
+      ) {
+        console.log(
+          `✅ New results detected: ${
+            latestResults.length -
+            lastResultsCountRef.current
+          } new items`
+        );
+        lastResultsCountRef.current = latestResults.length;
+      }
+
       setPendingItems((prevPending) => {
         const stillPending = prevPending.filter(
           (pendingItem) => {
@@ -91,13 +122,13 @@ export default function TranscriptPage() {
 
             if (found) {
               console.log(
-                `✅ Found completed item: ${pendingItem.company_name}`
+                `🎉 ${pendingItem.company_name}: Processing → Completed`
               );
               toast({
-                title: "Success!",
+                title: "✅ Analysis Complete!",
                 description: `Transcript for ${
                   pendingItem.company_name || "your meeting"
-                } analyzed successfully`,
+                } is ready`,
               });
               return false; // Remove from pending
             }
@@ -105,16 +136,16 @@ export default function TranscriptPage() {
             // Check timeout
             const elapsedTime =
               Date.now() - pendingItem.timestamp;
-            const timeoutMs = 60000; // 60 seconds
+            const timeoutMs = 90000; // 90 seconds
 
             if (elapsedTime > timeoutMs) {
               console.log(
-                `⏱️ Timeout for item: ${pendingItem.company_name}`
+                `⏱️ Timeout: ${pendingItem.company_name}`
               );
               toast({
-                title: "Timeout",
+                title: "Taking longer than expected",
                 description:
-                  "Analysis is taking longer than expected. Please refresh the page.",
+                  "Please refresh the page to see results.",
                 variant: "destructive",
               });
               return false; // Remove from pending
@@ -129,33 +160,29 @@ export default function TranscriptPage() {
 
       // Stop polling if max retries reached
       if (retryCountRef.current >= MAX_RETRIES) {
-        console.log(
-          "⚠️ Max retries reached, stopping poll"
-        );
+        console.log("⚠️ Max retries reached");
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
 
         setPendingItems((prev) => {
           if (prev.length > 0) {
             toast({
-              title: "Processing",
+              title: "Still Processing",
               description:
-                "Your transcript is still being processed. Refresh the page to see results.",
-              variant: "default",
+                "Items are still being processed. Refresh to see results.",
             });
           }
           return [];
         });
       }
-    }, 3000); // Poll every 3 seconds
+    }, 2000); // Poll every 2 seconds for more responsive updates
 
-    // Cleanup on unmount
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [pendingItems.length]); // Re-run when pending items count changes
+  }, [pendingItems.length]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -169,7 +196,6 @@ export default function TranscriptPage() {
     setIsLoading(true);
 
     try {
-      // Call the enqueue endpoint
       const response = await postData(
         `${backendUrl}/api/transcript`,
         {
@@ -180,17 +206,17 @@ export default function TranscriptPage() {
         }
       );
 
-      // Check if queued successfully
       if (response.queued && response.status_code === 201) {
-        // Add to pending items immediately
+        // Add to pending items with "queued" status
         const pendingItem = {
-          id: `pending-${Date.now()}`,
-          company_name: company,
+          id: `pending-${Date.now()}-${Math.random()}`,
+          company_name: company || "Unnamed Meeting",
           transcript_text: transcript,
           attendees,
           date,
           timestamp: Date.now(),
-          status: "processing",
+          status: "queued", // Initial status
+          messageId: response.qstash_response_text,
         };
 
         setPendingItems((prev) => [pendingItem, ...prev]);
@@ -202,9 +228,9 @@ export default function TranscriptPage() {
         setDate("");
 
         toast({
-          title: "Processing",
+          title: "🚀 Queued!",
           description:
-            "Your transcript is being analyzed. Results will appear shortly.",
+            "Your transcript has been queued for analysis",
         });
       } else {
         throw new Error("Failed to queue transcript");
@@ -237,8 +263,90 @@ export default function TranscriptPage() {
     );
     toast({
       title: "Cancelled",
-      description: "Removed pending item from view",
+      description: "Removed item from queue view",
     });
+  };
+
+  // Quick submit helper for testing multiple requests
+  const handleQuickSubmit = async (testData) => {
+    try {
+      const response = await postData(
+        `${backendUrl}/api/transcript`,
+        testData
+      );
+
+      if (response.queued && response.status_code === 201) {
+        const pendingItem = {
+          id: `pending-${Date.now()}-${Math.random()}`,
+          company_name:
+            testData.company_name || "Test Company",
+          transcript_text: testData.transcript_text,
+          attendees: testData.attendees,
+          date: testData.date,
+          timestamp: Date.now(),
+          status: "queued",
+          messageId: response.qstash_response_text,
+        };
+
+        setPendingItems((prev) => [pendingItem, ...prev]);
+      }
+    } catch (err) {
+      console.error("Quick submit failed:", err);
+    }
+  };
+
+  // Test button to submit 5 requests at once
+  const handleTest5Requests = async () => {
+    const testTranscripts = [
+      {
+        transcript_text:
+          "Meeting 1: Discussed Q4 revenue goals and marketing strategy. Team agreed to increase ad spend by 20%.",
+        company_name: "TechCorp Alpha",
+        attendees: "John, Sarah",
+        date: "2025-10-26",
+      },
+      {
+        transcript_text:
+          "Meeting 2: Product roadmap review. Feature X needs 2 more weeks. Beta launch scheduled for Nov 15.",
+        company_name: "InnovateLabs Beta",
+        attendees: "Mike, Lisa",
+        date: "2025-10-26",
+      },
+      {
+        transcript_text:
+          "Meeting 3: Customer support metrics review. Response time improved by 40%. Need to hire 2 more agents.",
+        company_name: "CustomerFirst Gamma",
+        attendees: "Emma, David",
+        date: "2025-10-26",
+      },
+      {
+        transcript_text:
+          "Meeting 4: Investor pitch practice. Refine slides 5-7. Focus more on unit economics and market size.",
+        company_name: "StartupXYZ Delta",
+        attendees: "Alex, Jennifer",
+        date: "2025-10-26",
+      },
+      {
+        transcript_text:
+          "Meeting 5: Engineering standup. API integration 80% complete. Database migration scheduled for weekend.",
+        company_name: "DevTeam Epsilon",
+        attendees: "Tom, Rachel",
+        date: "2025-10-26",
+      },
+    ];
+
+    toast({
+      title: "🚀 Submitting 5 Requests",
+      description: "Watch them progress through the queue!",
+    });
+
+    // Submit all 5 with slight delays to see them queue up
+    for (let i = 0; i < testTranscripts.length; i++) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 200)
+      ); // 200ms between submissions
+      await handleQuickSubmit(testTranscripts[i]);
+    }
   };
 
   return (
@@ -252,6 +360,17 @@ export default function TranscriptPage() {
             Paste your meeting transcript below and get
             AI-powered insights
           </p>
+        </div>
+
+        {/* Test Button */}
+        <div className='mb-6'>
+          <Button
+            onClick={handleTest5Requests}
+            variant='outline'
+            className='w-full py-4 border-2 border-purple-300 hover:bg-purple-50'
+          >
+            🧪 Test Queue: Submit 5 Requests at Once
+          </Button>
         </div>
 
         <ErrorMessage message={error} />
@@ -333,6 +452,34 @@ export default function TranscriptPage() {
             </Button>
           </form>
         </FormCard>
+
+        {/* Queue Status Summary */}
+        {pendingItems.length > 0 && (
+          <div className='mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg'>
+            <div className='flex items-center justify-between'>
+              <div>
+                <p className='font-semibold text-blue-900'>
+                  Queue Status: {pendingItems.length}{" "}
+                  item(s) processing
+                </p>
+                <p className='text-sm text-blue-700'>
+                  {
+                    pendingItems.filter(
+                      (i) => i.status === "queued"
+                    ).length
+                  }{" "}
+                  queued •{" "}
+                  {
+                    pendingItems.filter(
+                      (i) => i.status === "processing"
+                    ).length
+                  }{" "}
+                  processing
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Show pending items and results */}
         <div className='mt-10'>

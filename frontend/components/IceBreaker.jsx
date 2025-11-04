@@ -8,7 +8,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Delete, Loader2, X, Sparkles } from "lucide-react";
+import {
+  Delete,
+  X,
+  Clock,
+  Sparkles,
+  CheckCircle2,
+  Zap,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { deleteData } from "../lib/api.js";
@@ -71,6 +78,45 @@ export default function IceBreaker({
     return `${day}/${month}/${year}`;
   }
 
+  const getStatusConfig = (status) => {
+    switch (status) {
+      case "queued":
+        return {
+          icon: Clock,
+          iconColor: "text-orange-600",
+          bgColor: "bg-orange-50/50",
+          borderColor: "border-orange-300",
+          title: "⏳ Queued",
+          subtitle: "Waiting in queue...",
+          dotColor: "bg-orange-500",
+          badgeColor: "bg-orange-100 text-orange-800",
+        };
+      case "processing":
+        return {
+          icon: Sparkles,
+          iconColor: "text-purple-600",
+          bgColor: "bg-purple-50/50",
+          borderColor: "border-purple-300",
+          title: "✨ Crafting",
+          subtitle:
+            "AI is creating personalized message...",
+          dotColor: "bg-purple-500",
+          badgeColor: "bg-purple-100 text-purple-800",
+        };
+      default:
+        return {
+          icon: Sparkles,
+          iconColor: "text-gray-600",
+          bgColor: "bg-gray-50/50",
+          borderColor: "border-gray-300",
+          title: "Processing",
+          subtitle: "Working on it...",
+          dotColor: "bg-gray-500",
+          badgeColor: "bg-gray-100 text-gray-800",
+        };
+    }
+  };
+
   const hasAnyContent =
     results.length > 0 || pendingItems.length > 0;
 
@@ -87,92 +133,233 @@ export default function IceBreaker({
 
   return (
     <div className='space-y-6'>
-      <h2 className='text-2xl font-bold text-gray-900'>
-        Results Feed
-      </h2>
+      <div className='flex items-center justify-between'>
+        <h2 className='text-2xl font-bold text-gray-900'>
+          Results Feed
+        </h2>
+        {pendingItems.length > 0 && (
+          <div className='flex items-center gap-2 text-sm'>
+            <div className='flex items-center gap-1'>
+              <div className='w-2 h-2 bg-orange-500 rounded-full animate-pulse'></div>
+              <span className='text-gray-600'>
+                {
+                  pendingItems.filter(
+                    (i) => i.status === "queued"
+                  ).length
+                }{" "}
+                queued
+              </span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <div className='w-2 h-2 bg-purple-500 rounded-full animate-pulse'></div>
+              <span className='text-gray-600'>
+                {
+                  pendingItems.filter(
+                    (i) => i.status === "processing"
+                  ).length
+                }{" "}
+                processing
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* PENDING ITEMS */}
-      {pendingItems.map((item) => (
-        <Card
-          key={item.id}
-          className='rounded-2xl shadow-sm border-2 border-purple-200 bg-purple-50/30'
-        >
-          <CardHeader>
-            <div className='flex items-start justify-between'>
-              <div className='flex-1'>
-                <div className='flex items-center gap-2'>
-                  <Sparkles className='h-5 w-5 text-purple-600 animate-pulse' />
-                  <CardTitle className='text-xl text-purple-900'>
-                    Generating Icebreaker...
-                  </CardTitle>
+      {pendingItems.map((item) => {
+        const config = getStatusConfig(item.status);
+        const StatusIcon = config.icon;
+        const elapsedSeconds = Math.floor(
+          (Date.now() - item.timestamp) / 1000
+        );
+
+        return (
+          <Card
+            key={item.id}
+            className={`rounded-2xl shadow-md border-2 ${config.borderColor} ${config.bgColor} transition-all duration-500`}
+          >
+            <CardHeader>
+              <div className='flex items-start justify-between'>
+                <div className='flex-1'>
+                  <div className='flex items-center gap-3 mb-2'>
+                    <StatusIcon
+                      className={`h-6 w-6 ${
+                        config.iconColor
+                      } ${
+                        item.status === "processing"
+                          ? "animate-pulse"
+                          : ""
+                      }`}
+                    />
+                    <div>
+                      <div className='flex items-center gap-2'>
+                        <CardTitle className='text-xl'>
+                          {config.title}
+                        </CardTitle>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.badgeColor}`}
+                        >
+                          {item.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <CardDescription className='mt-1'>
+                        {item.company_name} •{" "}
+                        {config.subtitle}
+                      </CardDescription>
+                    </div>
+                  </div>
+
+                  {/* Progress Timeline */}
+                  <div className='mt-3 flex items-center gap-2'>
+                    <div className='flex items-center gap-1.5'>
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          item.status === "queued" ||
+                          item.status === "processing"
+                            ? "bg-green-500"
+                            : "bg-gray-300"
+                        } flex items-center justify-center`}
+                      >
+                        {(item.status === "queued" ||
+                          item.status === "processing") && (
+                          <CheckCircle2 className='w-2 h-2 text-white' />
+                        )}
+                      </div>
+                      <span className='text-xs text-gray-600'>
+                        Queued
+                      </span>
+                    </div>
+
+                    <div className='flex-1 h-0.5 bg-gray-300'>
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          item.status === "processing"
+                            ? "bg-purple-500 w-full"
+                            : item.status === "queued"
+                            ? "bg-orange-500 w-1/3"
+                            : "bg-gray-300 w-0"
+                        }`}
+                      />
+                    </div>
+
+                    <div className='flex items-center gap-1.5'>
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          item.status === "processing"
+                            ? "bg-purple-500 animate-pulse"
+                            : "bg-gray-300"
+                        } flex items-center justify-center`}
+                      >
+                        {item.status === "processing" && (
+                          <Sparkles className='w-2 h-2 text-white' />
+                        )}
+                      </div>
+                      <span className='text-xs text-gray-600'>
+                        Crafting
+                      </span>
+                    </div>
+
+                    <div className='flex-1 h-0.5 bg-gray-300' />
+
+                    <div className='flex items-center gap-1.5'>
+                      <div className='w-3 h-3 rounded-full bg-gray-300' />
+                      <span className='text-xs text-gray-600'>
+                        Complete
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='mt-2 text-xs text-gray-500'>
+                    ⏱️ {elapsedSeconds}s elapsed
+                  </div>
                 </div>
-                <CardDescription className='mt-1 text-purple-700'>
-                  {item.company_name || "Your prospect"} •
-                  Crafting personalized message
-                </CardDescription>
+
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => onCancelPending(item.id)}
+                  className='shrink-0 hover:text-red-500 transition-colors'
+                >
+                  <X className='h-4 w-4' />
+                </Button>
               </div>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => onCancelPending(item.id)}
-                className='shrink-0 hover:text-red-500 transition-colors'
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div>
+                <h4 className='font-semibold text-sm text-gray-700 mb-2'>
+                  LinkedIn Bio Preview
+                </h4>
+                <p className='text-sm text-gray-600 bg-white p-4 rounded-lg line-clamp-2'>
+                  {item.linkedin_bio}
+                </p>
+              </div>
+
+              <div
+                className={`p-3 rounded-lg ${
+                  item.status === "queued"
+                    ? "bg-orange-100"
+                    : "bg-purple-100"
+                }`}
               >
-                <X className='h-4 w-4' />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div>
-              <h4 className='font-semibold text-sm text-gray-700 mb-2'>
-                LinkedIn Bio Preview
-              </h4>
-              <p className='text-sm text-gray-600 bg-white p-4 rounded-lg line-clamp-3'>
-                {item.linkedin_bio}
-              </p>
-            </div>
-            <div className='bg-purple-100 p-4 rounded-lg'>
-              <div className='flex items-center gap-2 text-sm text-purple-800'>
-                <div className='flex gap-1'>
-                  <div
-                    className='w-2 h-2 bg-purple-600 rounded-full animate-bounce'
-                    style={{ animationDelay: "0ms" }}
-                  ></div>
-                  <div
-                    className='w-2 h-2 bg-purple-600 rounded-full animate-bounce'
-                    style={{ animationDelay: "150ms" }}
-                  ></div>
-                  <div
-                    className='w-2 h-2 bg-purple-600 rounded-full animate-bounce'
-                    style={{ animationDelay: "300ms" }}
-                  ></div>
+                <div className='flex items-center gap-2 text-sm'>
+                  <div className='flex gap-1'>
+                    <div
+                      className={`w-2 h-2 ${config.dotColor} rounded-full animate-bounce`}
+                      style={{ animationDelay: "0ms" }}
+                    ></div>
+                    <div
+                      className={`w-2 h-2 ${config.dotColor} rounded-full animate-bounce`}
+                      style={{ animationDelay: "150ms" }}
+                    ></div>
+                    <div
+                      className={`w-2 h-2 ${config.dotColor} rounded-full animate-bounce`}
+                      style={{ animationDelay: "300ms" }}
+                    ></div>
+                  </div>
+                  <span
+                    className={`font-medium ${
+                      item.status === "queued"
+                        ? "text-orange-800"
+                        : "text-purple-800"
+                    }`}
+                  >
+                    {item.status === "queued"
+                      ? "In queue - will start processing shortly"
+                      : "AI is analyzing profile and crafting personalized message"}
+                  </span>
                 </div>
-                <span className='font-medium'>
-                  AI is analyzing profile and crafting
-                  message
-                </span>
+                <p
+                  className={`text-xs mt-2 ${
+                    item.status === "queued"
+                      ? "text-orange-700"
+                      : "text-purple-700"
+                  }`}
+                >
+                  {item.status === "queued"
+                    ? "Your request is queued. Processing will begin in a few seconds."
+                    : "Creating a compelling icebreaker tailored to this prospect. Results will appear automatically."}
+                </p>
               </div>
-              <p className='text-xs text-purple-700 mt-2'>
-                This usually takes 5-15 seconds. Your
-                personalized icebreaker will appear
-                automatically.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
 
       {/* COMPLETED RESULTS */}
       {results.map((result) => (
         <Card
           key={result.id}
-          className='rounded-2xl shadow-sm'
+          className='rounded-2xl shadow-sm border-2 border-green-200 bg-green-50/20'
         >
           <CardHeader>
             <div className='flex items-start justify-between'>
-              <div>
-                <CardTitle className='text-xl'>
-                  {`Icebreaker for ${result.company_name}`}
-                </CardTitle>
+              <div className='flex-1'>
+                <div className='flex items-center gap-2 mb-1'>
+                  <CheckCircle2 className='h-5 w-5 text-green-600' />
+                  <CardTitle className='text-xl'>
+                    ✅ Icebreaker for {result.company_name}
+                  </CardTitle>
+                </div>
                 <CardDescription className='mt-1'>
                   {formatDate(result.date_generated)}
                 </CardDescription>
